@@ -16,7 +16,7 @@ warnings.filterwarnings('ignore')
 # ──────────────────────────────────────────────
 # 설정
 # ──────────────────────────────────────────────
-OFFENSIVE = ['SPY', 'IWM', 'VGK', 'EWJ', 'EEM', 'VNQ', 'GLD', 'DBC', 'HYG', 'LQD', 'TLT']
+OFFENSIVE = ['SPY', 'IWM', 'VEA', 'VWO', 'VNQ', 'DBC', 'IEF', 'TLT']
 DEFENSIVE = ['SHY', 'IEF', 'BIL']
 CANARY    = 'TIP'
 TOP_N     = 4
