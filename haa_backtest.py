@@ -39,7 +39,8 @@ SP500_UNIVERSE = [
 # ──────────────────────────────────────────────
 @st.cache_data(show_spinner=False)
 def download_data(start, end):
-    tickers = list(set(OFFENSIVE + DEFENSIVE + [CANARY] + SP500_UNIVERSE))
+    # QQQ도 다운로드에 포함
+    tickers = list(set(OFFENSIVE + DEFENSIVE + [CANARY, 'QQQ'] + SP500_UNIVERSE))
     raw = yf.download(tickers, start=start, end=end, auto_adjust=True, progress=False)['Close']
     monthly = raw.resample('ME').last()
     monthly = monthly.dropna(axis=1, thresh=len(monthly) // 2)
@@ -131,6 +132,19 @@ def run_backtest(monthly, mom_dict, replace_spy):
 
 
 # ──────────────────────────────────────────────
+# 바이앤홀드 수익률 계산
+# ──────────────────────────────────────────────
+def calc_buyhold(monthly, ticker, ref_index):
+    """기준 인덱스에 맞춰 바이앤홀드 누적 수익률 계산"""
+    if ticker not in monthly.columns:
+        return None
+    prices = monthly[ticker].reindex(ref_index).dropna()
+    rets   = prices.pct_change().dropna()
+    cum    = (1 + rets).cumprod()
+    return pd.DataFrame({'return': rets, 'cum_return': cum})
+
+
+# ──────────────────────────────────────────────
 # 성과 지표
 # ──────────────────────────────────────────────
 def get_stats(df):
@@ -141,7 +155,7 @@ def get_stats(df):
     mdd   = ((cum - cum.cummax()) / cum.cummax()).min() * 100
     sh    = rets.mean() / rets.std() * np.sqrt(12)
     wr    = (rets > 0).mean() * 100
-    atk   = (df['mode'] == 'attack').mean() * 100
+    atk   = (df['mode'] == 'attack').mean() * 100 if 'mode' in df.columns else 100.0
     rep   = int(df['spy_replaced'].sum()) if 'spy_replaced' in df.columns else 0
     return dict(cagr=cagr, mdd=mdd, sharpe=sh, win_rate=wr, attack=atk, spy_rep=rep)
 
@@ -151,7 +165,7 @@ def get_stats(df):
 # ──────────────────────────────────────────────
 st.set_page_config(page_title='HAA Backtest', page_icon='📈', layout='wide')
 st.title('📈 HAA Strategy Backtest')
-st.caption('Original HAA vs Modified HAA (SPY → Top S&P500 Momentum Stock)')
+st.caption('Original HAA vs Modified HAA (SPY → Top S&P500 Momentum Stock) vs SPY B&H vs QQQ B&H')
 
 # 사이드바
 with st.sidebar:
@@ -173,8 +187,14 @@ if run_btn:
         res_ori = run_backtest(monthly, mom_dict, replace_spy=False)
         res_mod = run_backtest(monthly, mom_dict, replace_spy=True)
 
+    # 바이앤홀드 (HAA와 동일 기간으로 맞춤)
+    spy_bh = calc_buyhold(monthly, 'SPY', res_ori.index)
+    qqq_bh = calc_buyhold(monthly, 'QQQ', res_ori.index)
+
     s_ori = get_stats(res_ori)
     s_mod = get_stats(res_mod)
+    s_spy = get_stats(spy_bh) if spy_bh is not None else {}
+    s_qqq = get_stats(qqq_bh) if qqq_bh is not None else {}
 
     # ── 지표 카드 ──
     st.subheader('📊 성과 요약')
@@ -196,24 +216,56 @@ if run_btn:
 
     st.caption(f"SPY 교체 횟수: **{s_mod['spy_rep']}회** / 전체 공격 월수: {int((res_mod['mode']=='attack').sum())}회")
 
-    # ── 차트 ──
+    # ── 전략별 성과 비교 테이블 ──
+    st.subheader('📋 전략별 성과 비교')
+    compare_data = {
+        '전략':       ['HAA Original', 'HAA Modified', 'SPY B&H', 'QQQ B&H'],
+        'CAGR (%)':   [f"{s_ori['cagr']:.2f}%", f"{s_mod['cagr']:.2f}%",
+                       f"{s_spy['cagr']:.2f}%" if s_spy else '-',
+                       f"{s_qqq['cagr']:.2f}%" if s_qqq else '-'],
+        'MDD (%)':    [f"{s_ori['mdd']:.2f}%", f"{s_mod['mdd']:.2f}%",
+                       f"{s_spy['mdd']:.2f}%" if s_spy else '-',
+                       f"{s_qqq['mdd']:.2f}%" if s_qqq else '-'],
+        'Sharpe':     [f"{s_ori['sharpe']:.2f}", f"{s_mod['sharpe']:.2f}",
+                       f"{s_spy['sharpe']:.2f}" if s_spy else '-',
+                       f"{s_qqq['sharpe']:.2f}" if s_qqq else '-'],
+        '승률 (%)':   [f"{s_ori['win_rate']:.1f}%", f"{s_mod['win_rate']:.1f}%",
+                       f"{s_spy['win_rate']:.1f}%" if s_spy else '-',
+                       f"{s_qqq['win_rate']:.1f}%" if s_qqq else '-'],
+    }
+    st.dataframe(pd.DataFrame(compare_data).set_index('전략'), use_container_width=True)
+
+    # ── 누적 수익률 & 드로우다운 차트 ──
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-    fig.suptitle('HAA Original vs Modified', fontsize=13, fontweight='bold')
+    fig.suptitle('HAA Original vs Modified vs SPY B&H vs QQQ B&H', fontsize=13, fontweight='bold')
 
     # 누적 수익률
     ax = axes[0]
-    ax.plot(res_ori.index, res_ori['cum_return'], color='#2ecc71', lw=2, label='HAA Original')
-    ax.plot(res_mod.index, res_mod['cum_return'], color='#e74c3c', lw=2, label='HAA Modified')
+    ax.plot(res_ori.index, res_ori['cum_return'], color='#2ecc71', lw=2,   label='HAA Original')
+    ax.plot(res_mod.index, res_mod['cum_return'], color='#e74c3c', lw=2,   label='HAA Modified')
+    if spy_bh is not None:
+        ax.plot(spy_bh.index, spy_bh['cum_return'], color='#3498db', lw=1.5, ls='--', label='SPY B&H')
+    if qqq_bh is not None:
+        ax.plot(qqq_bh.index, qqq_bh['cum_return'], color='#f39c12', lw=1.5, ls='--', label='QQQ B&H')
     ax.set_title('Cumulative Return')
     ax.set_ylabel('Growth of $1')
     ax.legend(); ax.grid(alpha=0.3)
 
     # 드로우다운
     ax = axes[1]
-    for df, label, c in [(res_ori, 'HAA Original', '#2ecc71'), (res_mod, 'HAA Modified', '#e74c3c')]:
+    strategies = [
+        (res_ori, 'HAA Original', '#2ecc71'),
+        (res_mod, 'HAA Modified', '#e74c3c'),
+    ]
+    if spy_bh is not None:
+        strategies.append((spy_bh, 'SPY B&H', '#3498db'))
+    if qqq_bh is not None:
+        strategies.append((qqq_bh, 'QQQ B&H', '#f39c12'))
+
+    for df, label, c in strategies:
         dd = (df['cum_return'] - df['cum_return'].cummax()) / df['cum_return'].cummax() * 100
-        ax.fill_between(df.index, dd, 0, alpha=0.4, color=c, label=label)
-        ax.plot(df.index, dd, color=c, lw=0.8)
+        ax.fill_between(df.index, dd, 0, alpha=0.25, color=c)
+        ax.plot(df.index, dd, color=c, lw=1.2, label=label)
     ax.set_title('Drawdown (%)')
     ax.set_ylabel('Drawdown %')
     ax.legend(); ax.grid(alpha=0.3)
@@ -222,13 +274,22 @@ if run_btn:
     st.pyplot(fig)
 
     # ── 연도별 수익률 ──
-    fig2, ax2 = plt.subplots(figsize=(14, 4))
-    for df, label, c, offset in [
-        (res_ori, 'HAA Original', '#2ecc71', -0.2),
-        (res_mod, 'HAA Modified', '#e74c3c',  0.2),
-    ]:
+    st.subheader('📅 연도별 수익률')
+    fig2, ax2 = plt.subplots(figsize=(14, 5))
+
+    bar_configs = [
+        (res_ori, 'HAA Original', '#2ecc71', -0.3),
+        (res_mod, 'HAA Modified', '#e74c3c', -0.1),
+    ]
+    if spy_bh is not None:
+        bar_configs.append((spy_bh, 'SPY B&H', '#3498db', 0.1))
+    if qqq_bh is not None:
+        bar_configs.append((qqq_bh, 'QQQ B&H', '#f39c12', 0.3))
+
+    for df, label, c, offset in bar_configs:
         annual = df['return'].resample('YE').apply(lambda x: (1+x).prod()-1) * 100
-        ax2.bar(annual.index.year + offset, annual.values, 0.35, label=label, color=c, alpha=0.85)
+        ax2.bar(annual.index.year + offset, annual.values, 0.18, label=label, color=c, alpha=0.85)
+
     ax2.axhline(0, color='black', lw=0.8)
     ax2.set_title('Annual Returns (%)')
     ax2.legend(); ax2.grid(alpha=0.3, axis='y')
