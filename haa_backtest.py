@@ -12,7 +12,7 @@ warnings.filterwarnings('ignore')
 # ─────────────────────────────────────────────────────────────────────────
 # 1. 설정 및 데이터 경로 (반드시 본인의 Raw 주소로 수정하세요)
 # ─────────────────────────────────────────────────────────────────────────
-CSV_URL = "https://raw.githubusercontent.com/사용자이름/App-kospi/main/sp500_history.csv"
+CSV_URL = "https://raw.githubusercontent.com/fja05680/sp500/refs/heads/master/S%26P%20500%20Historical%20Components%20%26%20Changes(01-17-2026).csv"
 
 OFFENSIVE = ['SPY', 'IWM', 'VEA', 'VWO', 'VNQ', 'DBC', 'IEF', 'TLT']
 DEFENSIVE = ['SHY', 'IEF', 'BIL']
