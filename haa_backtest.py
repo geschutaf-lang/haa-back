@@ -156,8 +156,8 @@ st.caption('Original HAA vs Modified HAA (SPY → Top S&P500 Momentum Stock)')
 # 사이드바
 with st.sidebar:
     st.header('⚙️ 설정')
-    start_year = st.slider('시작 연도', 2007, 2020, 2007)
-    end_year   = st.slider('종료 연도', 2015, 2024, 2024)
+    start_year = st.slider('시작 연도', 2006, 2020, 2006)
+    end_year   = st.slider('종료 연도', 2015, 2026, 2026)
     start = f'{start_year}-01-01'
     end   = f'{end_year}-12-31'
     run_btn = st.button('🚀 백테스트 실행', use_container_width=True)
